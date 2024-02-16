@@ -136,6 +136,7 @@ for(p in allpdfs){
 
 
 }
+notafun3 <- function(){
 dat <- do.call('rbind',alldat)
 readr::write_delim(dat, 'service_reports.txt', delim = '\t')
-
+}
