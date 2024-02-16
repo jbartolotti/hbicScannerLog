@@ -1,0 +1,336 @@
+---
+title: "HBIC Scanlog"
+date: "Generated `r format(Sys.time(), format = '%a %d %b %Y')`"
+output: 
+  html_document:
+      toc: true
+      toc_float: true
+      toc_collapsed: true
+      toc_depth: 3
+      number_sections: true
+      theme: lumen
+params: 
+  ilab: ""
+  xnat_data: ""
+  figure_dir: ""
+  figure_filenames: ""
+---
+
+<style type="text/css">
+.main-container {
+  max-width: 100% !important;
+  margin: auto;
+}
+  body{
+  font-size: 12pt;
+}
+
+.column-left{
+  float: left;
+  width: 40%;
+  text-align: left;
+}
+.column-right{
+  float: right;
+  width: 40%;
+  text-align: left;
+}
+.column-figure{
+  float: right;
+  width: 20%;
+  text-align: left;
+}
+
+</style>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Weekly View
+
+
+```{r echo = FALSE}
+#theme: lumen
+figure_dir <- params$figure_dir
+figure_filenames <- params$figure_filenames
+ilab <- params$ilab
+xnat_data <- params$xnat_data
+ida <- ilab$data 
+
+daydict <- c('Mon','Tues','Wed','Thur','Fri','Sat','Sun')
+badscans <- c('BAD DATA','CNCL','ABORT','NO SHOW')
+
+
+#sort by ascending date
+figure_filenames <- figure_filenames[sort(names(figure_filenames))]
+
+#include_graphics doesn't work in a for loop, it *must* be in a top-level expression.
+knitr::include_graphics(file.path(figure_dir, figure_filenames))
+
+
+```
+
+
+
+```{r echo = FALSE}
+
+hourFormat <- function(hours){
+  if(length(hours) == 0 | any(is.na(hours))){
+    return('0h0m')  
+  } else{
+  hr <- floor(hours)
+  mn <- floor((hours - hr)*100)/100
+  
+  if(hr > 0){
+    tt <- sprintf('%sh %sm',hr,floor(mn*60))  
+  } else {
+    tt <- sprintf('%sm',floor(mn*60))
+  }
+  return(tt)  
+  }
+}
+xnatFormatBPA <- function(line){
+  bb <- as.character()
+  pp <- as.character()
+  aa <- as.character()
+  if(!is.na(line$path_folder_BACKUP)){
+    bb <- '<span style="color:#12C9FA">BACKUP</span>'
+  }
+  if(!is.na(line$path_folder_PREARCH)){
+    pp <- '<span style="color:#12FAB9">PREARCH</span>'
+  }
+  if(!is.na(line$path_folder_ARCH)){
+    aa <- '<span style="color:#00B835">ARCH</span>'
+  }
+  return(paste(c(bb,pp,aa), collapse = ', '))
+}
+
+usageTypeFormat <- function(ut,uts, badscans){
+  if(uts %in% badscans){
+    return(sprintf('<span style="color:#FF0000">%s</span>',ut))
+    
+  } else {
+    return(ut)
+  }
+  
+  }
+
+print.ilab.scan <- function(line){
+  scan_lines <- c(
+  sprintf('<b>%s, %s</b> %s',
+          strftime(line$purchase_date_posix, format = '%I:%M %p'), hourFormat(line$quantity),
+          usageTypeFormat(line$usage_type,line$usage_type_short, badscans)),
+  sprintf('<b>%s</b>',line$study_id),
+  line$study_title,
+  line$notes
+  )
+  return(paste(scan_lines, collapse = '\n\n'))
+}
+
+xnatNumDicom <- function(line){
+  dc <- line$dicomcount_ARCH
+  if(is.na(dc)){
+    ret <- NA
+  } else {
+    ret <- sum(as.numeric(gsub(":","",unlist(stringr::str_extract_all(dc, ":(\\d+)")))))
+  }
+  return(ret)
+}
+
+print.xnat.scan <- function(line){
+  scan_lines <- c(
+  sprintf('<b>%s, %s</b>',strftime(line$studDatetime_posix, format = '%I:%M %p'), hourFormat(line$durationMinutes/60)),
+
+  sprintf('<b>%s</b>',line$studDesc),
+  line$patientName,
+  sprintf('Loc: %s', xnatFormatBPA(line)),
+  sprintf('# Series: %s', sum(gregexpr(":", line$dicomcount_ARCH, fixed=TRUE)[[1]] > 0)),
+  sprintf('# Dicoms: %s',xnatNumDicom(line))
+  
+  #sprintf('Project ID: %s',line$study_id),
+  #sprintf('Scan ID: %s', line$patientID)
+  )
+  return(paste(scan_lines, collapse = '\n\n'))
+}
+
+if(FALSE){
+#ix <- rbind(ix_data, ix_data)
+#ix$studDesc[2] <- 'I put this here'
+ix <- ix_data
+
+
+print.days <- function(ix){
+  printlines <- as.character()
+  alldays <- unique(ix$studDate)
+  for(day in alldays){
+    printlines <- c(printlines,sprintf('DATE: %s',day))
+    thisday <- subset(ix, studDate == day)
+    for(line in 1:dim(thisday)[1]){
+      scan_lines <-print.scan(thisday[line,])
+      printlines <- c(printlines, scan_lines)
+    }
+      
+
+  }
+  return(printlines)
+}
+
+
+}
+
+```
+
+
+# Daily Summaries
+```{r, echo = FALSE, results='asis'}
+
+
+alldays <- unique(ida$date)
+#  cat('</div>','\n\n')
+#  cat('<div class="column-figure">\n\n')
+#  knitr::include_graphics(file.path(figure_dir, figure_filenames[1]))
+#  cat('</div>','\n\n')
+
+for(day in sort(alldays)){
+  ilabday <- subset(ida, date == day)
+  ilabday <- ilabday[order(as.numeric(ilabday$epoch)),]
+  
+  xnatday <- subset(xnat_data$all, date == day)
+  xnatday <- xnatday[order(as.numeric(xnatday$epochStud)),]
+
+  dayweeknum <- as.numeric(strftime(as.POSIXct(day, origin = '1970-01-01'), format = '%u')) #1-7, monday is 1
+  dayname <- daydict[dayweeknum]
+  
+  #Print the date header. 'clearfix' ensures that we break from the previous set of columns and start a new section 
+  #https://stackoverflow.com/questions/22310912/bootstrap-row-with-columns-of-different-height#:~:text=The%20Bootstrap%203%20%22height%20problem%22%20occurs%20because%20the,is%20to%20stack%20them%20to%20the%20closest%20side.
+  cat('<div class="clearfix"></div>')
+  cat('##', dayname, strftime(as.POSIXct(day, origin = '1970-01-01'), format = '%m-%d-%Y'),'\n\n')
+  
+  cat('<div class="container">')
+  cat('<div class="row">')
+  cat('<div class="col-md-4">','\n\n')
+  for(i in 1:dim(ilabday)[1]){
+    cat(print.ilab.scan(ilabday[i,]),'\n\n')
+  }
+  cat('</div>','\n\n')
+  cat('<div class="col-md-3">','\n\n')
+  for(i in 1:dim(xnatday)[1]){
+    cat(print.xnat.scan(xnatday[i,]),'\n\n')
+  }
+  cat('</div>','\n\n')
+  cat(sprintf('<div class="col-md-5"><img src="%s" class="img-responsive"></div>',file.path(figure_dir, sprintf('ilab_xnat_schedule_%s.png',strftime(as.POSIXct(day),'%Y%m%d')))))
+  cat('</div>','\n\n')
+  cat('</div>','\n\n')
+
+  #  #Write the iLab information for this day into the left hand column
+#  cat('<div class="column-left">')
+#  for(i in 1:dim(thisday)[1]){
+#    cat(print.ilab.scan(ilabday[i,]),'\n\n')
+#  }
+#  cat('</div>','\n\n')
+#  cat('<div class="column-right">\n\n')
+#  for(i in 1:dim(xnatday)[1]){
+#    cat(print.xnat.scan(xnatday[i,]),'\n\n')
+#  }
+  
+
+}
+```
+
+
+
+```{r echo = FALSE}
+if(FALSE){
+status_fields <- c('Project ID','Sched. / Actual','Status','Data')
+
+text_green <- '#48E130'#'#3CA61C'
+text_red <- '#E12A1B'
+text_orange <- '#E1B730'
+
+# Formatted text for table entries
+ttext <- list(
+  scanned = kableExtra::cell_spec('scanned', color = text_green),
+  cancelled = kableExtra::cell_spec('cancelled', color = text_red),
+  complete = kableExtra::cell_spec('complete', color = text_green),
+  not_found =  kableExtra::cell_spec('not found', color = text_red),
+  mismatch =  kableExtra::cell_spec('mismatch', color = text_orange)
+  )
+
+
+applyColor <- function(tt){
+  text_green <- '#48E130'#'#3CA61C'
+  text_red <- '#E12A1B'
+  text_orange <- '#E1B730'
+  format_tt <- tt
+  if(any(grep('cancel',tolower(tt))) | any(grep('no show',tolower(tt))) ){
+    format_tt <- kableExtra::cell_spec(tt, color = text_red)
+  } else if(any(grep('complete',tt))){
+    format_tt <- kableExtra::cell_spec(tt, color = text_green)
+  } else if(any(grep('not_found',tt))){
+    format_tt <- kableExtra::cell_spec(tt, color = text_red)
+  } else if(any(grep('mismatch',tt))){
+    format_tt <- kableExtra::cell_spec(tt, color = text_orange)
+  } else if(any(grep('tbd',tt))){
+    format_tt <- kableExtra::cell_spec(tt, color = text_orange)
+  }
+  
+  return(format_tt)
+}
+
+}
+
+```
+
+
+
+```{r echo=FALSE}
+
+if(FALSE){
+
+#sample data
+#wk <- data.frame(day = c(1,1,2), id = c('101','202','101'), status = c(ttext$scanned,ttext$cancelled, ttext$scanned),dataset = c(ttext$complete, ttext$not_found, ttext$mismatch))
+
+#wk <- rbind(weekly_summary,weekly_summary,weekly_summary)
+#wk$dataset <- c('complete','not_found','mismatch')
+#wk$usage_type <- unlist(lapply(wk$usage_type, applyColor))
+#wk$dataset <- unlist(lapply(wk$dataset, applyColor))
+ 
+wk <- weekly_summary
+wk$dataset <- c('tbd')
+wk$usage_type <- unlist(lapply(wk$usage_type, applyColor))
+wk$dataset <- unlist(lapply(wk$dataset, applyColor))
+
+# each list entry is a vector of all ID/status/data for all scans on that day.
+# The list entries get cbinded together to create the output table
+eachday <- list()
+for(dd in 1:7){
+  thisday <- subset(wk, day == dd) 
+  eachday[[dd+1]] <- as.vector(t(thisday[,c(!colnames(thisday)%in% 'day')]))
+}
+
+# pad the shorter days with blank spaces so that columns can be bound
+maxlines <- max(unlist(lapply(eachday,'length')))
+for(dd in 1:7){
+eachday[[dd+1]] <- c(eachday[[dd+1]], rep(' ', maxlines - length(eachday[[dd+1]])))
+}
+#First entry is the row names
+eachday[[1]] <- rep(status_fields, maxlines/length(status_fields)) 
+
+wk_summary <- as.data.frame(t(do.call('rbind',eachday)))
+colnames(wk_summary) <- c('',daydict)
+
+
+# Create table from dataframe. Add vertical columns between days, 
+# and horizontal lines after each scan entry
+hline_rows <- seq(from = length(status_fields), to = dim(wk_summary)[1]-1, by = length(status_fields))
+wk_summary %>% 
+knitr::kable(escape = FALSE)  %>%
+kableExtra::column_spec (2:8,border_left = T, border_right = T) %>%
+kableExtra::row_spec(hline_rows, extra_css = "border-bottom: 1px solid") %>%
+kableExtra::kable_styling()
+
+}
+```
+
+

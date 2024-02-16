@@ -1,0 +1,19 @@
+---
+title: "Untitled"
+author: "James Bartolotti"
+date: "8/18/2023"
+output: 
+  html_document:
+      toc: true
+      toc_float: true
+      toc_collapsed: true
+      toc_depth: 3
+      number_sections: true
+      theme: lumen
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# stuff

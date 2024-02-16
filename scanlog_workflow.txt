@@ -1,0 +1,43 @@
+test data for a test report:
+** xnatdata
+A one 'clinical scan' i.e. no project folder
+project folder 9999 with three scans.
+	One earlier than daterange
+	B One has complete files
+	C One is missing a series
+project folder 12345 with one scan
+	E complete files. Not in ilab.
+
+** ilab
+A clinical scan
+B 9999 one
+C 9999 two
+D other project, cancelled
+
+. Create a tab-delimited file R:/XXX/3T_Scan_Logs/Reports/Study_Dicom_Filecounts.txt. Each row has a study ID, a date to start using it (YYYY_MM_DD) and then a string of session-filecounts, e.g., "1:2, 2:300, 3:156, ... 10:2". These counts will be used to check dicom filecounts in xnat for completeness. If the filecounts change (add/drop a session), do not delete the entry. Instead create a new one, with a new Active_Date value.
+. Look in R:/XXX/3T_Scan_Logs/iLab_Reports and note the end date of the most recent log. This will be the start of the new log (LOG_START).
+. Export a csv report from iLab to include all entries with a "Purchase Date" that is more recent than LOG_START
+. Open the csv and delete all columns except for "Study Title", "Notes", "Purchase Date", and "Usage Type". Do not change the filename, the date information in it is used by subsequent data processing scripts.
+
+. Save the reduced ilab report to the R-Drive, in R:/XXX/3T_Scan_Logs/iLab_Reports. Moving a file here will trigger the processing script on Synapse.
+. A cron job on Synapse regularly scans iLab Reports for new files. 
+.. First, it determines whether or not it can access the R-Drive. If not, it will check for the presence of a file called "/xxx/xxx/xxx/.iLabLog_Unreadable_YYYYMMDD_HHMMSS". If that file does not exist, create it and send an email alert that the R-Drive is not mounted. If it does exist, if the date is older than 24 hours, re-send the email alert, delete the file, and replace the file with one of the current date. 
+.. Second, The script scans the files in R:/XXX/3T_Scan_Logs/iLab_Reports and extracts the date ranges of each. It also scans the files in R:/XXX/3T_Scan_Logs/Reports for the date ranges of each. If one of the iLab_Reports is new, it will check for the
+file R:/XXX/3T_Scan_Logs/Reports/.processing_DATE. If this file exists, abort and wait for processing to finish. If it does not exist, create it and begin processing.
+
+. The Processing script will read both the iLab Report, and scan /xnatdata/backup for recent scans. It has an onexit function to delete .processing_DATE. On exit, it checks for the completed report, and if it can't find it, it emails an error warning.
+.. Import the iLab report and filter for Scans, TD, and Cancelled Scans. Do not include room use, training, etc. Figure out exactly which ones to include.
+.. Scan /xnatdata/backup; create a data frame of all datetime folders, including ones in project folders. Convert names to dates, and filter for all with a date more recent than LOG_START. 
+.. Go through each foldername remaining. First, get the first dicom file of the earliest session, and inspect it for the date and the study ID (save study ID to the dataframe). If the date is more recent than LOG_START, flag it to include. If it is older, exclude it.
+.. ?? Scan the prearchive for any of the remaining foldernames. Flag any present as in-prearchive.
+.. ?? For each foldername, scan the associated archive for that study ID and see if the scan is present.
+.. Then, match the data to the ilab report. Match based on datetime of the start of the session to the datetimes in the iLab_Reports within an acceptable margin (30 minutes?), plus the study IDs matching within an acceptable error (stringdist 1, i.e. one substitution, deletion, or transposed). If the study IDs don't match exactly, flag as such.
+.. Now go through each foldername remaining and get the dicom filecounts of all sessions. Load R:/XXX/3T_Scan_Logs/Reports/Study_Dicom_Filecounts and get the filecount for the study with the closest date to the scan, without going over.
+
+. Create the report. 
+.. A summary section at the top lists the date range. It counts the number of Mondays in the range, and makes a row for each one. Then there are 7 columns for each, one for each day of the week. In each day is written study ID in Red (cancelled) or Green (run). Then There is a line for the data: Complete (green), Mismatch (yellow), Not Found (Red).
+.. Then there are detailed entries for each entry from iLab. Print the Date, then the Usage Type, Then the Study Title, and then the Notes. Then Print whether the data was complete, mismatched, or not found. If mismatched, print all session numbers, and for each the correct filecount and the actual filecount. Then, indicate whether the data is in the prearchive and whether it is in the archive.
+.. Flag Scans that were in XNAT that were not in iLab. These can be scans that happened when a participant showed up on the wrong day and gets scanned anyways, or cases where someone runs an impromptu scan during a free slot in the schedule.
+
+
+. Pull out the discrepencies (missing/incomplete data) and send those alerts to Hoglund Staff. That way they don't get buried in the report
