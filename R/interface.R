@@ -17,11 +17,11 @@ initialize_hbicscanlog <- function(writedir = getwd()){
     file.path(writedir,'Study_Dicom_Filecounts.txt'))
 }
 
-#' @export
 #' This function is called by the HBIC_Scan_Reporter.sh script that is run as a cron job.
 #' ilab path and filename are the location of the newly exported ilab report to process.
 #' It will be scanned for scheduled scans since the last scanlog, and crossref with xnat.
 #' config is a list with fields: admin_email and allowed_usage_type
+#' @export
 new_scanlog <- function(
   ilab_path,
   ilab_filename,
@@ -71,29 +71,46 @@ new_scanlog <- function(
 #  scanlog_report(ix_list$ix_data, ix_list$weekly_summary, report_path, ilab_data$filename_dates)
 
 
-  }
-
-#' @export
-xnat_yesterday <- function(xnat_paths, figure_path){
-  yesterday <- Sys.Date()-1
-  xnat_daily(xnat_paths, yesterday, figure_path)
 }
 
 #' @export
+xnat_yesterday <- function(xnat_paths, figure_path, email_list = '', admin_email = 'default'){
+  yesterday <- Sys.Date()-1
+  if(admin_email == 'default'){
+    xnat_day(xnat_paths, yesterday, figure_path, email_list)
+  } else {
+    xnat_day(xnat_paths, yesterday, figure_path, email_list, admin_email)
+  }
+}
+
 #' XNAT-only daily report. Day is date object like '1986-05-03'.
-xnat_daily <- function(
+#' @export
+xnat_day <- function(
   xnat_paths,
   day,
-  figure_path
+  figure_path,
+  email_list = '',
+  admin_email = 'jbartolotti2@kumc.edu'
 ){
+
+  if(length(email_list) > 1){
+    print_email_list <- sprintf('-c %s ',paste(email_list, collapse = ', '))
+
+  } else {
+      if(email_list != ''){
+        print_email_list <- sprintf('-c %s', email_list)
+      } else {
+        print_email_list <- ''
+      }
+  }
   xnat_dates <- list(start = as.numeric(as.POSIXct(day)),
                      end = as.numeric(as.POSIXct(Sys.Date())))
   xnat_data <- XNAT.process(xnat_paths, xnat_dates)
-  xnat_data_yesterday <- xnat_data$all[xnat_data$all$date == yesterday,]
+  xnat_data_targetday <- xnat_data$all[xnat_data$all$date == day,]
 
-  figname <- FIGURES.xnatDaySummary(xnat_data_yesterday, figure_path)
+  figname <- FIGURES.xnatDaySummary(xnat_data_targetday, figure_path)
 
-  mes <- REPORT.message(xnat_data_yesterday)
+  mes <- REPORT.message(xnat_data_targetday)
 
   mescat <- do.call('c',mes)
 
@@ -106,12 +123,12 @@ xnat_daily <- function(
     #           sendmailR::mime_part(file.path(figure_path,figname), name = figname))
      #                    ),silent = TRUE)
 body <- c(report_title,'', mescat)
-system(paste0('echo "',paste(body,collapse='\n'),'" | mutt -e "my_hdr From: xnat_reporter@hbic-synapse2.kumc.edu" -e "set realname=XNAT_Reporter" -s "',report_title,'" jbartolotti2@kumc.edu -c jbartolotti2@kumc.edu -a ',file.path(figure_path,figname)))
+system(paste0('echo "',paste(body,collapse='\n'),'" | mutt -e "my_hdr From: xnat_reporter@hbic-synapse2.kumc.edu" -e "set realname=XNAT_Reporter" -s "',report_title,'" ',admin_email,' ', print_email_list, '-a ',file.path(figure_path,figname)))
 }
 
 
-#' @export
 #' XNAT-only reporter
+#' @export
 new_xnatlog <- function(
   xnat_paths,
   xnat_dates,
@@ -254,12 +271,12 @@ UTILS.cleanup <- function(ilabdir, admin_email, note){
 
 }
 
-#' @export
 #' Scan the ilab report directory and completed report directory for
 #' DATE_DATE_filename.csv files. Return the filename of the most recent ilab file
 #' with a daterange more recent than the completed reports. If we're up to date,
 #' return 'none'
 #'
+#' @export
 checkNewiLabReport <- function(ilabdir, reportdir){
 
   #Get all ilab report dates and time ranges
