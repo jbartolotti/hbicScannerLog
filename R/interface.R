@@ -98,7 +98,7 @@ xnat_day <- function(
 
   } else {
       if(email_list != ''){
-        print_email_list <- sprintf('-c %s', email_list)
+        print_email_list <- sprintf('-c %s ', email_list)
       } else {
         print_email_list <- ''
       }
